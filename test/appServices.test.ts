@@ -78,7 +78,7 @@ describe('AppServices facade', () => {
   it('protects an app, persists it, and annotates the running list', async () => {
     const { platform } = makeFakePlatform(APPS)
     const store = new Store(storeFile)
-    const svc = new AppServices(store, platform, { selfName: 'ClovaSweep', ownPids: [] })
+    const svc = new AppServices(store, platform, { selfName: 'ClovaSweep', ownPids: [], platform: 'darwin' })
 
     svc.protectApp({ id: 'bundle:com.slack.slack', name: 'Slack', bundleId: 'com.slack.Slack' })
     expect(svc.getProtectedApps().map((p) => p.id)).toContain('bundle:com.slack.slack')
@@ -94,7 +94,7 @@ describe('AppServices facade', () => {
     const { platform } = makeFakePlatform(APPS)
     const store = new Store(storeFile)
     store.updateSettings({ gracefulTimeoutMs: 500 }) // keep the test fast (min clamp)
-    const svc = new AppServices(store, platform, { selfName: 'ClovaSweep', ownPids: [] })
+    const svc = new AppServices(store, platform, { selfName: 'ClovaSweep', ownPids: [], platform: 'darwin' })
     svc.protectApp({ id: 'bundle:com.slack.slack', name: 'Slack', bundleId: 'com.slack.Slack' })
 
     const result = await svc.sweep()
@@ -120,7 +120,7 @@ describe('AppServices facade', () => {
     writeFileSync(outside, 'y')
 
     const { platform } = makeFakePlatform(APPS)
-    const svc = new AppServices(new Store(storeFile), platform, { selfName: 'ClovaSweep', ownPids: [] })
+    const svc = new AppServices(new Store(storeFile), platform, { selfName: 'ClovaSweep', ownPids: [], platform: 'darwin' })
 
     const res = await svc.runCleanup({ categoryId: 'downloads', paths: [inside, outside] })
     expect(trashItem).toHaveBeenCalledTimes(1)
@@ -139,7 +139,7 @@ describe('AppServices facade', () => {
       { id: 'safe', title: 'Caches', description: '', risk: 'safe', smartEligible: true, sizeBytes: 30, itemCount: 2 }
     ]
     const { platform, emptyTrash } = makeFakePlatform(APPS, { categories })
-    const svc = new AppServices(new Store(storeFile), platform, { selfName: 'ClovaSweep', ownPids: [] })
+    const svc = new AppServices(new Store(storeFile), platform, { selfName: 'ClovaSweep', ownPids: [], platform: 'darwin' })
 
     const res = await svc.runSmartCleanup()
     expect(emptyTrash).toHaveBeenCalledTimes(1)
@@ -158,7 +158,7 @@ describe('AppServices facade', () => {
     ]
     const { platform } = makeFakePlatform(APPS, { categories })
     const store = new Store(storeFile)
-    const svc = new AppServices(store, platform, { selfName: 'ClovaSweep', ownPids: [] })
+    const svc = new AppServices(store, platform, { selfName: 'ClovaSweep', ownPids: [], platform: 'darwin' })
 
     svc.setSmartCategoryEnabled('safe', false)
     const res = await svc.runSmartCleanup()

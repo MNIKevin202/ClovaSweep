@@ -35,6 +35,8 @@ export interface AppServicesOptions {
   selfBundleId?: string
   selfName?: string
   ownPids?: number[]
+  /** Override the platform (defaults to process.platform). Used by tests. */
+  platform?: Platform
 }
 
 export class AppServices {
@@ -47,7 +49,7 @@ export class AppServices {
     private readonly platform: PlatformServices,
     opts: AppServicesOptions = {}
   ) {
-    this.platformName = process.platform as Platform
+    this.platformName = opts.platform ?? (process.platform as Platform)
     this.selfIds = new Set(
       [
         opts.selfBundleId ? `bundle:${opts.selfBundleId.toLowerCase()}` : undefined,

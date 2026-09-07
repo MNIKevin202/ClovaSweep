@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Build output
+out/
+dist/
+release/
+*.tsbuildinfo
+
+# Generated icon resources (regenerated from assets/ClovaSweep_Icon.png via `npm run icons`)
+# We keep the generated build/ icons committed so CI/packaging need no image toolchain,
+# but ignore stray exports.
+resources/icon-cache/
+
+# Coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/*
+!.vscode/extensions.json
+.idea/
+
+# Env / secrets
+.env
+.env.*
+*.p12
+*.mobileprovision

@@ -66,6 +66,18 @@ export async function directoryStats(root: string): Promise<{ sizeBytes: number;
   return { sizeBytes, itemCount }
 }
 
+/** Size of a single path (recursive for directories, stat size for files). */
+export async function sizeOfPath(p: string): Promise<number> {
+  try {
+    const st = await fs.lstat(p)
+    if (st.isSymbolicLink()) return 0
+    if (st.isDirectory()) return await directorySize(p)
+    return st.size
+  } catch {
+    return 0
+  }
+}
+
 /** List the top-level entries of a directory as CleanupItems (sized). */
 export async function listTopLevelItems(root: string, categoryId: string): Promise<CleanupItem[]> {
   if (!(await pathExists(root))) return []

@@ -204,6 +204,8 @@ export interface CleanupItem {
 export interface CleanupScan {
   storage: StorageInfo
   categories: CleanupCategory[]
+  /** Category ids the user has excluded from Smart Cleanup. */
+  disabledSmartCategories: string[]
   scannedAt: string
 }
 
@@ -263,6 +265,7 @@ export interface ClovaApi {
   runSmartCleanup(): Promise<CleanupResult>
   runCleanup(payload: { categoryId: string; paths: string[] }): Promise<CleanupResult>
   emptyTrash(): Promise<CleanupResult>
+  setSmartCategory(payload: { categoryId: string; enabled: boolean }): Promise<{ disabledSmartCategories: string[] }>
 
   // Window
   openDashboard(section?: string): void

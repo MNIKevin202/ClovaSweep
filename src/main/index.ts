@@ -157,7 +157,11 @@ function bootstrap(): void {
 
   const settings = store.getSettings()
   applyTheme(settings.theme)
-  startup.setEnabled(settings.launchAtLogin, settings.startMinimized)
+  // Only reconcile the login item when it actually differs, so we don't make an
+  // unnecessary (and sometimes permission-denied) OS call on every launch.
+  if (startup.getEnabled() !== settings.launchAtLogin) {
+    startup.setEnabled(settings.launchAtLogin, settings.startMinimized)
+  }
 
   windows = new WindowManager(() => isQuitting, syncDock)
   tray = new TrayController({

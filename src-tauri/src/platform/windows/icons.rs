@@ -45,7 +45,7 @@ impl WindowsIcons {
 
 impl IconProvider for WindowsIcons {
     fn get_icon(&self, path: Option<&str>, _bundle_id: Option<&str>) -> Option<String> {
-        let Some(path) = path else { return None };
+        let path = path?;
         if let Some(cached) = self.cache.lock().unwrap().get(path) {
             return cached.clone();
         }

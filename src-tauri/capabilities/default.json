@@ -1,0 +1,6 @@
+{
+  "identifier": "default",
+  "description": "Capabilities granted to the ClovaSweep main window. Custom app commands (get_settings, sweep, etc.) aren't ACL-gated; this only needs to cover core IPC essentials (event listen/emit) that the frontend uses directly.",
+  "windows": ["main"],
+  "permissions": ["core:default"]
+}

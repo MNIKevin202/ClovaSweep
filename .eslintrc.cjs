@@ -23,10 +23,10 @@ module.exports = {
     react: { version: 'detect' }
   },
   ignorePatterns: [
-    'out/',
     'dist/',
     'release/',
     'node_modules/',
+    'src-tauri/',
     'coverage/',
     '*.config.ts',
     '*.config.mjs',

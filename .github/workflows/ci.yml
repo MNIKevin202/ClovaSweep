@@ -21,11 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
-          - os: macos-latest
-            builder: --mac
-          - os: windows-latest
-            builder: --win
+        os: [macos-latest, windows-latest]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -36,44 +32,59 @@ jobs:
           node-version: 22
           cache: npm
 
-      - name: Install dependencies
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache Rust build
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install frontend dependencies
         run: npm ci
 
-      - name: Typecheck
+      - name: Typecheck (frontend)
         run: npm run typecheck
 
-      - name: Lint
+      - name: Lint (frontend)
         run: npm run lint
 
-      - name: Test
+      - name: Test (frontend)
         run: npm test
 
-      - name: Build (main + preload + renderer)
-        run: npx --no-install electron-vite build
+      - name: Lint (Rust)
+        run: cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 
-      - name: Package installers
-        run: npx --no-install electron-builder ${{ matrix.builder }} --publish never
+      - name: Test (Rust)
+        run: cargo test --manifest-path src-tauri/Cargo.toml --lib
+
+      - name: Build installers
+        run: npx --no-install tauri build --ci
         env:
           # No signing certificate in CI — build unsigned artifacts.
-          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ''
+          CI: 'true'
 
-      # Best-effort: a full GitHub Actions storage quota must not fail the build,
-      # which has already produced valid installers in the previous step.
+      - name: List built installers
+        shell: bash
+        run: |
+          find src-tauri/target/release/bundle -maxdepth 2 -type f \( -iname "*.dmg" -o -iname "*.exe" -o -iname "*.msi" -o -iname "*.app.tar.gz" \) 2>/dev/null || true
+
+      # Best-effort: a full GitHub Actions storage quota must not fail the
+      # build, which has already produced valid installers in the previous
+      # step.
       - name: Upload installers
         uses: actions/upload-artifact@v4
         continue-on-error: true
         with:
           name: clovasweep-${{ runner.os }}
           path: |
-            release/*.dmg
-            release/*.exe
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/macos/*.app.tar.gz
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
           if-no-files-found: warn
           retention-days: 7
-
-      - name: List built installers
-        shell: bash
-        run: ls -lah release || dir release
 
       - name: Attach to GitHub Release (tags only)
         if: startsWith(github.ref, 'refs/tags/')
@@ -81,9 +92,9 @@ jobs:
         continue-on-error: true
         with:
           files: |
-            release/*.dmg
-            release/*.zip
-            release/*.exe
+            src-tauri/target/release/bundle/dmg/*.dmg
+            src-tauri/target/release/bundle/nsis/*.exe
+            src-tauri/target/release/bundle/msi/*.msi
           fail_on_unmatched_files: false
 
       # Mirrors .dmg/.exe installers to the public downloads-only repo
@@ -102,7 +113,7 @@ jobs:
           gh release create "$TAG" --repo "$RELEASES_REPO" --title "ClovaSweep ${TAG#v}" \
             --notes "Automated release from CI (${GITHUB_SHA::7})." --skip-existing || true
           shopt -s nullglob
-          FILES=(release/*.dmg release/*.exe)
+          FILES=(src-tauri/target/release/bundle/dmg/*.dmg src-tauri/target/release/bundle/nsis/*.exe src-tauri/target/release/bundle/msi/*.msi)
           if [ ${#FILES[@]} -gt 0 ]; then
             gh release upload "$TAG" --repo "$RELEASES_REPO" --clobber "${FILES[@]}"
           fi

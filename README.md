@@ -82,6 +82,30 @@ electron-builder environment variables:
 
 Everything else builds and runs without them.
 
+### Downloads / public releases
+
+Public downloads (`.dmg` / `.exe`) are mirrored to a separate, public,
+downloads-only repo so this source repo can stay private:
+**[MNIKevin202/ClovaSweep-releases](https://github.com/MNIKevin202/ClovaSweep-releases)**.
+
+Pushing a `v*` tag here builds installers on both platforms and (once
+configured) mirrors them there automatically. To enable the mirror:
+
+1. Create a fine-grained GitHub PAT scoped to just the `ClovaSweep-releases`
+   repo with **Contents: Read and write** permission (Settings → Developer
+   settings → Fine-grained tokens).
+2. Add it as a repo secret here named `RELEASES_REPO_TOKEN`
+   (Settings → Secrets and variables → Actions → New repository secret).
+
+Until that secret exists, the "Publish to public releases repo" CI step is a
+no-op — everything else in CI is unaffected. Without it, mirror a release
+manually:
+
+```bash
+gh release create vX.Y.Z --repo MNIKevin202/ClovaSweep-releases \
+  release/*.dmg release/ClovaSweep-Setup-*.exe
+```
+
 ## License
 
 MIT © Clova Suite

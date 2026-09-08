@@ -8,13 +8,91 @@
 //! deletes only the specific item paths that pass `can_delete_path`, never a
 //! root directory.
 //!
+//! Path handling here is deliberately **not** `std::path::Path`/`PathBuf`:
+//! those types follow the *host* OS's separator/root rules regardless of the
+//! `Platform` argument, so a Windows CI runner parsing a macOS-style test
+//! path (or vice versa) silently gets the wrong answer. Everything below is
+//! plain string manipulation keyed off `Platform`, matching how the real
+//! macOS/Windows storage providers hand us paths in their own OS's format —
+//! and letting this module's tests exercise both platforms' rules from a
+//! single host.
+//!
 //! Pure module — fully unit-testable.
 
 use crate::types::{CleanupRisk, Platform};
-use std::path::{Path, PathBuf};
 
 fn sep(platform: Platform) -> char {
     if platform == Platform::Win32 { '\\' } else { '/' }
+}
+
+/// Split a path into its segments for the given platform's separator rules.
+/// Windows accepts both `/` and `\`; macOS/Linux treat `/` only.
+fn segments(p: &str, platform: Platform) -> Vec<&str> {
+    let split_any = |c: char| if platform == Platform::Win32 { c == '/' || c == '\\' } else { c == '/' };
+    p.split(split_any).filter(|s| !s.is_empty()).collect()
+}
+
+/// True when `p` is an absolute path for the given platform (leading
+/// separator on macOS/Linux, or a drive-letter/UNC prefix on Windows).
+fn is_absolute(p: &str, platform: Platform) -> bool {
+    if platform == Platform::Win32 {
+        let bytes = p.as_bytes();
+        (bytes.len() >= 2 && bytes[1] == b':') || p.starts_with('\\') || p.starts_with('/')
+    } else {
+        p.starts_with('/')
+    }
+}
+
+/// Windows drive prefix (e.g. "c:"), lower-cased, if present.
+fn drive_prefix(p: &str, platform: Platform) -> Option<String> {
+    if platform != Platform::Win32 {
+        return None;
+    }
+    let bytes = p.as_bytes();
+    if bytes.len() >= 2 && bytes[1] == b':' {
+        Some(p[..2].to_lowercase())
+    } else {
+        None
+    }
+}
+
+/// Lexically resolve `.`/`..` segments without touching the filesystem, using
+/// the given platform's separator/root rules regardless of the host OS.
+fn lexical_normalize(p: &str, platform: Platform) -> String {
+    let drive = drive_prefix(p, platform);
+    let body = drive.as_ref().map(|d| &p[d.len()..]).unwrap_or(p);
+    let absolute = is_absolute(body, platform);
+
+    let mut stack: Vec<&str> = Vec::new();
+    for seg in segments(body, platform) {
+        match seg {
+            "." => {}
+            ".." => {
+                if !stack.is_empty() && *stack.last().unwrap() != ".." {
+                    stack.pop();
+                } else if !absolute {
+                    stack.push("..");
+                }
+                // Absolute paths can't go above root: a leading ".." is dropped.
+            }
+            other => stack.push(other),
+        }
+    }
+
+    let s = sep(platform);
+    let joined = stack.join(&s.to_string());
+    let mut out = String::new();
+    if let Some(d) = drive {
+        out.push_str(&d);
+    }
+    if absolute {
+        out.push(s);
+    }
+    out.push_str(&joined);
+    if out.is_empty() {
+        out.push('.');
+    }
+    out
 }
 
 /// Normalise a path for comparison (case-insensitive + backslash on Windows).
@@ -30,31 +108,12 @@ pub fn normalize_compare_path(p: &str, platform: Platform) -> String {
     out
 }
 
-/// Lexical (non-IO) path resolution: collapse `.` and `..` segments without
-/// touching the filesystem, so this stays pure and unit-testable everywhere.
-fn lexical_normalize(p: &Path) -> PathBuf {
-    let mut out = PathBuf::new();
-    for comp in p.components() {
-        use std::path::Component::*;
-        match comp {
-            CurDir => {}
-            ParentDir => {
-                if !out.pop() {
-                    out.push("..");
-                }
-            }
-            other => out.push(other.as_os_str()),
-        }
-    }
-    out
-}
-
 /// True when `child` is strictly contained within `parent` (not equal to it).
 pub fn is_strictly_within(child: &str, parent: &str, platform: Platform) -> bool {
-    let c = lexical_normalize(Path::new(child));
-    let par = lexical_normalize(Path::new(parent));
-    let c_norm = normalize_compare_path(&c.to_string_lossy(), platform);
-    let par_norm = normalize_compare_path(&par.to_string_lossy(), platform);
+    let c = lexical_normalize(child, platform);
+    let par = lexical_normalize(parent, platform);
+    let c_norm = normalize_compare_path(&c, platform);
+    let par_norm = normalize_compare_path(&par, platform);
     if c_norm == par_norm {
         return false;
     }
@@ -204,5 +263,16 @@ mod tests {
         assert!(is_smart_eligible(CleanupRisk::Safe));
         assert!(is_smart_eligible(CleanupRisk::System));
         assert!(!is_smart_eligible(CleanupRisk::Review));
+    }
+
+    #[test]
+    fn lexical_normalize_is_host_independent() {
+        // These assert Darwin-style semantics regardless of which OS runs the test.
+        assert_eq!(lexical_normalize("/a/b/../c", Platform::Darwin), "/a/c");
+        assert_eq!(lexical_normalize("/a/./b/", Platform::Darwin), "/a/b");
+        assert_eq!(lexical_normalize("/a/../../b", Platform::Darwin), "/b");
+        // And Windows-style semantics too, independent of host.
+        assert_eq!(lexical_normalize("C:\\a\\..\\b", Platform::Win32), "c:\\b");
+        assert_eq!(lexical_normalize("C:/a/./b", Platform::Win32), "c:\\a\\b");
     }
 }

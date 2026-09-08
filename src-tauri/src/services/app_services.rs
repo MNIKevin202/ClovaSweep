@@ -408,19 +408,25 @@ mod tests {
 
     /// Build an AppServices wired to fakes, plus the backing tempdir (kept
     /// alive by the caller for the duration of the test) and store file path.
-    fn build(apps: Vec<RawApp>, home: &str, categories: Vec<CleanupCategory>) -> (AppServices, tempfile::TempDir, std::path::PathBuf) {
+    ///
+    /// `platform` must match the convention of `home` and any paths derived
+    /// from it: `Platform::Darwin` for the synthetic macOS-style fixture
+    /// paths used by the classification tests below (which never touch the
+    /// real filesystem), or `Platform::current()` for tests that use a real
+    /// `tempdir()` path (whose separators follow the actual host OS).
+    fn build(apps: Vec<RawApp>, home: &str, categories: Vec<CleanupCategory>, platform: Platform) -> (AppServices, tempfile::TempDir, std::path::PathBuf) {
         let dir = tempdir().unwrap();
         let store_file = dir.path().join("state.json");
         let shared = Arc::new(Shared(Mutex::new(apps.into_iter().map(|a| (a.pid, a)).collect())));
-        let platform = PlatformServices {
+        let platform_services = PlatformServices {
             discovery: Box::new(FakeDiscovery(shared.clone())),
             terminator: Box::new(FakeTerminator(shared)),
             storage: Box::new(FakeStorage { home: home.to_string(), categories, empty_trash_calls: Mutex::new(0) }),
             icons: Box::new(FakeIcons),
         };
         let store = Store::new(store_file.clone());
-        let opts = AppServicesOptions { self_bundle_id: None, self_name: Some("ClovaSweep".into()), own_pids: HashSet::new(), platform: Platform::Darwin };
-        (AppServices::new(store, platform, opts), dir, store_file)
+        let opts = AppServicesOptions { self_bundle_id: None, self_name: Some("ClovaSweep".into()), own_pids: HashSet::new(), platform };
+        (AppServices::new(store, platform_services, opts), dir, store_file)
     }
 
     const APPS_FIXTURE: fn() -> Vec<RawApp> = || {
@@ -433,7 +439,7 @@ mod tests {
 
     #[test]
     fn protects_an_app_persists_and_annotates_running_list() {
-        let (svc, _dir, store_file) = build(APPS_FIXTURE(), "/tmp/does-not-matter", vec![]);
+        let (svc, _dir, store_file) = build(APPS_FIXTURE(), "/tmp/does-not-matter", vec![], Platform::Darwin);
         svc.protect_app(AppIdentity { id: String::new(), name: "Slack".into(), bundle_id: Some("com.slack.Slack".into()), path: None, package_id: None });
         assert!(svc.get_protected_apps().iter().any(|p| p.id == "bundle:com.slack.slack"));
 
@@ -448,7 +454,7 @@ mod tests {
 
     #[test]
     fn sweeps_non_protected_apps_records_sweep_updates_analytics() {
-        let (svc, _dir, _file) = build(APPS_FIXTURE(), "/tmp/x", vec![]);
+        let (svc, _dir, _file) = build(APPS_FIXTURE(), "/tmp/x", vec![], Platform::Darwin);
         svc.update_settings(serde_json::json!({ "gracefulTimeoutMs": 500 }));
         svc.protect_app(AppIdentity { id: String::new(), name: "Slack".into(), bundle_id: Some("com.slack.Slack".into()), path: None, package_id: None });
 
@@ -476,7 +482,7 @@ mod tests {
         fs::write(&inside, "x").unwrap();
         fs::write(&outside, "y").unwrap();
 
-        let (svc, _store_dir, _file) = build(APPS_FIXTURE(), &home, vec![]);
+        let (svc, _store_dir, _file) = build(APPS_FIXTURE(), &home, vec![], Platform::current());
         let res = svc.run_cleanup("downloads", vec![inside.clone(), outside.clone()]);
         assert_eq!(res.removed_count, 1);
         assert!(!std::path::Path::new(&inside).exists(), "allowed file should be trashed");
@@ -496,7 +502,7 @@ mod tests {
             CleanupCategory { id: "bin".into(), title: "Trash".into(), description: String::new(), risk: CleanupRisk::System, smart_eligible: true, size_bytes: 1000, item_count: 2, unavailable: false, detail: None },
             CleanupCategory { id: "safe".into(), title: "Caches".into(), description: String::new(), risk: CleanupRisk::Safe, smart_eligible: true, size_bytes: 8, item_count: 2, unavailable: false, detail: None },
         ];
-        let (svc, _store_dir, _file) = build(APPS_FIXTURE(), &home, categories);
+        let (svc, _store_dir, _file) = build(APPS_FIXTURE(), &home, categories, Platform::current());
 
         let res = svc.run_smart_cleanup();
         assert!(!std::path::Path::new(&format!("{home}/safe/a.tmp")).exists());
@@ -512,7 +518,7 @@ mod tests {
         fs::write(format!("{home}/safe/a.tmp"), "aaaa").unwrap();
 
         let categories = vec![CleanupCategory { id: "safe".into(), title: "Caches".into(), description: String::new(), risk: CleanupRisk::Safe, smart_eligible: true, size_bytes: 4, item_count: 1, unavailable: false, detail: None }];
-        let (svc, _store_dir, _file) = build(APPS_FIXTURE(), &home, categories);
+        let (svc, _store_dir, _file) = build(APPS_FIXTURE(), &home, categories, Platform::current());
 
         svc.set_smart_category_enabled("safe", false);
         let res = svc.run_smart_cleanup();
